@@ -1,28 +1,25 @@
 ﻿Function Create-MultiAzTags {
 <#
     .NOTES
-    ===========================================================================
+    -------------------------------------------------------
     Created by:    Asaf Blubshtein
-    Date:          5/26/2020
-    Organization:  VMware
+    Date:          
     Blog:          https://softwaredefinedcoffee.com
     Twitter:       @AsafBlubshtein
-    ===========================================================================
+    -------------------------------------------------------
 
     .SYNOPSIS
-        Create Multi AZ tags
+        Create tags for MultiAZ clsuter VM placement
     .DESCRIPTION
-        This cmdlet connects to the HCX Enterprise Manager
+        This command will create a tag category based on the parameter provided. By default the category name will be 'MultiAZSites'.
+        For every stretched cluster two tags will be created for the preferred and non-preferred sites. The tag naming convention is 'Cluster-Name'-Preferred/'Cluster-Name'-Non-Preferred, e.g. Cluster-1-Preferred and Cluster-1-Non-Preferred.
+        The description for each tag will be the corresponding AZ name. The tag names or description should not be changed.
     .EXAMPLE
-        Connect-HcxServer -Server $HCXServer -Username $Username -Password $Password
+        Create-MultiAzTags -TagCategoryName $Name
 #>
-#    Param (
-#        [Parameter(Mandatory=$true)][String]$Server,
-#        [Parameter(Mandatory=$true)][String]$Username,
-#        [Parameter(Mandatory=$true)][String]$Password
-#    )
-    
-    $TagCategoryName = "MultiAZSites"
+    Param (
+        [Parameter(Mandatory=$false)][String]$TagCategoryName="MultiAZSites"
+)
 
     $Clusters = (Get-Cluster | Get-VsanFaultDomain).Cluster | Get-Unique
 
@@ -40,42 +37,34 @@
         Write-Host -ForegroundColor Green "Tag Category $TagCategory exists"
     } Else {
         Write-Host -ForegroundColor Yellow "Tag Category $TagCategoryName doesn't exists. Creating the category"
-        $TagCategory = New-TagCategory -Name $TagCategoryName -Cardinality Single -EntityType @("VM","VMhost") -Description "Sites for Stretched Clusters"
+        $TagCategory = New-TagCategory -Name $TagCategoryName -Cardinality Single -EntityType @("VM","VMhost") -Description "Sites for Stretched Clusters. Do not change tag names or descriptions. This will cause the host tagging cmdlet to fail."
     }
     
     foreach ($Cluster in $Clusters) {
         $FaultDomains = $Cluster | Get-VsanFaultDomain
-        Write-Host "`nPlease select the preferred vSAN Fault Domain for cluster $Cluster`:"
-        Write-Host -ForegroundColor Gray "To view the preferred fault domain go to Hosts and Clusters > $Cluster > Configure > vSAN > Fault Domains"
-        For ($i=0; $i -lt $FaultDomains.Count; $i++)  {
-          Write-Host "$($i+1): $($FaultDomains[$i])"
-        }
+        $ClustView = $cluster.ExtensionData.MoRef
+        $vSanStretchedView = Get-VsanView -Id "VimClusterVsanVcStretchedClusterSystem-vsan-stretched-cluster-system"
+        $PrefFD = $vSanStretchedView.VSANVcGetPreferredFaultDomain($ClustView).PreferredFaultDomainName
 
-        do
-        {
-            try {
-            [int]$PrefFd = Read-Host "Enter a number to select the preferred fault domain: " 
-            } catch {}
-        } until ($FaultDomains[$PrefFd-1])
-
-        #preferred FD
+        Write-Host "`nCreating tags for cluster $Cluster with a preferred fault domain in $PrefFD"
+        
         $PrefTag = "$Cluster-Preferred" 
         If (Get-Tag -Category $TagCategory | where {$_.Name -eq $PrefTag})
         {
-            Write-Host -ForegroundColor Green "`nTag $PrefTag in category $TagCategoryName already exists"
+            Write-Host -ForegroundColor Green "Tag $PrefTag in category $TagCategoryName already exists"
         } Else {
-            Write-Host -ForegroundColor Yellow "`nCreating tag $PrefTag in category $TagCategoryName for AZ $($FaultDomains[$PrefFd-1])"
-            New-Tag -Name $PrefTag -Category $TagCategory -Description "$($FaultDomains[$PrefFd-1])" | Out-Null
+            Write-Host -ForegroundColor Yellow "Creating tag $PrefTag in category $TagCategoryName for AZ $($FaultDomains | Where {$_.Name -eq $PrefFD})"
+            New-Tag -Name $PrefTag -Category $TagCategory -Description "$($FaultDomains | Where {$_.Name -eq $PrefFD})" | Out-Null
         }
         
         #Nonpreferred FD
         $NoPrefTag = "$Cluster-Non-Preferred" 
         If (Get-Tag -Category $TagCategory | where {$_.Name -eq $NoPrefTag})
         {
-            Write-Host -ForegroundColor Green "`nTag $NoPrefTag in category $TagCategoryName already exists"
+            Write-Host -ForegroundColor Green "Tag $NoPrefTag in category $TagCategoryName already exists"
         } Else {
-            Write-Host -ForegroundColor Yellow "`nCreating tag $NoPrefTag in category $TagCategoryName for AZ $($FaultDomains[$PrefFd-2])"
-            New-Tag -Name $NoPrefTag -Category $TagCategory -Description "$($FaultDomains[$PrefFd-2])" | Out-Null
+            Write-Host -ForegroundColor Yellow "Creating tag $NoPrefTag in category $TagCategoryName for AZ $($FaultDomains | Where {$_.Name -ne $PrefFD})"
+            New-Tag -Name $NoPrefTag -Category $TagCategory -Description "$($FaultDomains | Where {$_.Name -ne $PrefFD})" | Out-Null
         }
     }
     Write-Host -ForegroundColor Green "`n`nThe following tags were created or validated:"
@@ -85,28 +74,25 @@
 Function Tag-MultiAzHosts {
 <#
     .NOTES
-    ===========================================================================
+    -------------------------------------------------------
     Created by:    Asaf Blubshtein
-    Date:          5/26/2020
-    Organization:  VMware
+    Date:          
     Blog:          https://softwaredefinedcoffee.com
     Twitter:       @AsafBlubshtein
-    ===========================================================================
+    -------------------------------------------------------
 
     .SYNOPSIS
-        Create Multi AZ tags
+        Assign MultiAZ tags to hosts in MultiAZ clusters
     .DESCRIPTION
-        This cmdlet connects to the HCX Enterprise Manager
+        Will tag each host in a stretched cluster with an appropriate tag from the category provided. By default the category is 'MultiAZSites'.
+        The tag name should correspond to the following format - 'Cluster-Name'-Preferred/'Cluster-Name'-Non-Preferred, e.g. Cluster-1-Preferred and Cluster-1-Non-Preferred. The description for each tag should be the corresponding AZ name.
     .EXAMPLE
-        Connect-HcxServer -Server $HCXServer -Username $Username -Password $Password
+        Tag-MultiAzHosts -TagCategoryName $Name
 #>
-#    Param (
-#        [Parameter(Mandatory=$true)][String]$Server,
-#        [Parameter(Mandatory=$true)][String]$Username,
-#        [Parameter(Mandatory=$true)][String]$Password
-#    )
+    Param (
+        [Parameter(Mandatory=$false)][String]$TagCategoryName="MultiAZSites"
+)
     
-    $TagCategoryName = "MultiAZSites"
     $CreatedTags = @()
 
     $Clusters = (Get-Cluster | Get-VsanFaultDomain).Cluster | Get-Unique
@@ -133,7 +119,7 @@ Function Tag-MultiAzHosts {
 
             $FDTags = Get-Tag -Category $TagCategory | Where {($_.Name -eq $PrefTagName) -or ($_.Name -eq $NoPrefTagName)}
 
-            Write-Host "`nValidating tag $Cluster`:"
+            Write-Host "`nValidating tags for $Cluster exists..."
             If ($FDTags.Count -ne 2) {
                 Write-Error "Tags $PrefTagName or $NoPrefTagName in category $TagCategoryName could not be found. Please create the tags manually or using the Create-MultiAzTags cmdlet"
             } Else {
