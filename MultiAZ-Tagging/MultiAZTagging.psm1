@@ -3,7 +3,7 @@
     .NOTES
     -------------------------------------------------------
     Created by:    Asaf Blubshtein
-    Date:          
+    Date:          May 26, 2020
     Blog:          https://softwaredefinedcoffee.com
     Twitter:       @AsafBlubshtein
     -------------------------------------------------------
@@ -76,7 +76,7 @@ Function Set-MultiAzHostTag {
     .NOTES
     -------------------------------------------------------
     Created by:    Asaf Blubshtein
-    Date:          
+    Date:          May 26, 2020
     Blog:          https://softwaredefinedcoffee.com
     Twitter:       @AsafBlubshtein
     -------------------------------------------------------
