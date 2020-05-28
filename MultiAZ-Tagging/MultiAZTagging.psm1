@@ -1,4 +1,4 @@
-﻿Function Create-MultiAzTags {
+﻿Function New-MultiAzTags {
 <#
     .NOTES
     -------------------------------------------------------
@@ -15,7 +15,7 @@
         For every stretched cluster two tags will be created for the preferred and non-preferred sites. The tag naming convention is 'Cluster-Name'-Preferred/'Cluster-Name'-Non-Preferred, e.g. Cluster-1-Preferred and Cluster-1-Non-Preferred.
         The description for each tag will be the corresponding AZ name. The tag names or description should not be changed.
     .EXAMPLE
-        Create-MultiAzTags -TagCategoryName $Name
+        New-MultiAzTags -TagCategoryName $Name
 #>
     Param (
         [Parameter(Mandatory=$false)][String]$TagCategoryName="MultiAZSites"
@@ -71,7 +71,7 @@
     Get-Tag -Category $TagCategory | Format-Table
 }
 
-Function Tag-MultiAzHosts {
+Function Set-MultiAzHostTag {
 <#
     .NOTES
     -------------------------------------------------------
@@ -108,7 +108,7 @@ Function Tag-MultiAzHosts {
     $TagCategory = Get-TagCategory | Where {$_.Name -eq $TagCategoryName}
      
     If (-not $TagCategory) {
-        Write-error "Tag category $TagCategoryName could not be found. Please create the tag category manually or using the Create-MultiAzTags cmdlet"
+        Write-error "Tag category $TagCategoryName could not be found. Please create the tag category manually or using the New-MultiAzTags cmdlet"
     } Else {
         Write-Host -ForegroundColor Green "Tag Category $TagCategory found"
     
@@ -121,7 +121,7 @@ Function Tag-MultiAzHosts {
 
             Write-Host "`nValidating tags for $Cluster exists..."
             If ($FDTags.Count -ne 2) {
-                Write-Error "Tags $PrefTagName or $NoPrefTagName in category $TagCategoryName could not be found. Please create the tags manually or using the Create-MultiAzTags cmdlet"
+                Write-Error "Tags $PrefTagName or $NoPrefTagName in category $TagCategoryName could not be found. Please create the tags manually or using the New-MultiAzTags cmdlet"
             } Else {
                 Write-Host -ForegroundColor Green "Tags $PrefTagName and $NoPrefTagName in category $TagCategory found"
 
@@ -136,7 +136,7 @@ Function Tag-MultiAzHosts {
                             Write-Host -ForegroundColor Yellow "Assigning tag $VMHostTag to host $VMhost"
                             $CreatedTags += New-TagAssignment -Entity $VMHost -Tag $VMHostTag
                         }
-                    } Else {Write-Error "An appropriate tag with a description of $($FD.Name) could not be found. Please add the descriptions manually or re-create the tags using the Create-MultiAzTags cmdlet"}
+                    } Else {Write-Error "An appropriate tag with a description of $($FD.Name) could not be found. Please add the descriptions manually or re-create the tags using the New-MultiAzTags cmdlet"}
                 }
             }
         }
