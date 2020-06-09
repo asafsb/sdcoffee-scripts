@@ -11,64 +11,123 @@
     .SYNOPSIS
         Create tags for MultiAZ clsuter VM placement
     .DESCRIPTION
-        This command will create a tag category based on the parameter provided. By default the category name will be 'MultiAZSites'.
-        For every stretched cluster two tags will be created for the preferred and non-preferred sites. The tag naming convention is 'Cluster-Name'-Preferred/'Cluster-Name'-Non-Preferred, e.g. Cluster-1-Preferred and Cluster-1-Non-Preferred.
-        The description for each tag will be the corresponding AZ name. The tag names or description should not be changed.
+        This command will create a tag category based on the parameter provided, tags for each AZ and a VM-Host affinity compute policy for each AZ. By default the category name will be 'MultiAZ'.
+        For every vCenter with a stretched cluster two tags will be created for the preferred and non-preferred sites. The tag naming convention is 'Category Name'-Preferred/'Category Name'-Non-Preferred, e.g. MultiAZ-Preferred and MultiAZ-Non-Preferred.
+        The description for each tag will be the corresponding AZ name. The tag names or description should not be changed, as this will cause the Set-MultiAzHostTag command to stop working.
+        Two compute policies will be created for the preferred and non-preferred sites. The policy naming convention is 'Category Name'-Preferred/'Category Name'-Non-Preferred, e.g. MultiAZ-Preferred and MultiAZ-Non-Preferred.
     .EXAMPLE
         New-MultiAzTags -TagCategoryName $Name
+    .EXAMPLE
+        New-MultiAzTags -SkipPolicyCreation
 #>
     Param (
-        [Parameter(Mandatory=$false)][String]$TagCategoryName="MultiAZSites"
+        [Parameter(Mandatory=$false)][String]$TagCategoryName="MultiAZ",
+        [Switch]$SkipPolicyCreation
 )
 
     $Clusters = (Get-Cluster | Get-VsanFaultDomain).Cluster | Get-Unique
 
-    Write-Host "Creating tags for the following stretched-clusters:"
-    $i = 1
-    foreach ($Cluster in $Clusters) {
-        Write-Host "`t$i. $Cluster"
-        $i++
-    }
+    If ($Clusters) {
+        Write-Host "Creating tags for vCenter with the following stretched-clusters:"
+        $i = 1
+        foreach ($Cluster in $Clusters) {
+            Write-Host "`t$i. $Cluster"
+            $i++
+        }
     
-    Write-Host "`nValidating tag category $TagCategoryName exists..."
-    $TagCategory = Get-TagCategory | Where {$_.Name -eq $TagCategoryName}
+        Write-Host "`nValidating tag category $TagCategoryName exists..."
+        $TagCategory = Get-TagCategory | Where {$_.Name -eq $TagCategoryName}
      
-    If ($TagCategory) {
-        Write-Host -ForegroundColor Green "Tag Category $TagCategory exists"
-    } Else {
-        Write-Host -ForegroundColor Yellow "Tag Category $TagCategoryName doesn't exists. Creating the category"
-        $TagCategory = New-TagCategory -Name $TagCategoryName -Cardinality Single -EntityType @("VM","VMhost") -Description "Sites for Stretched Clusters. Do not change tag names or descriptions. This will cause the host tagging cmdlet to fail."
-    }
+        If ($TagCategory) {
+            Write-Host -ForegroundColor Green "Tag Category $TagCategory exists"
+        } Else {
+            Write-Host -ForegroundColor Yellow "Tag Category $TagCategoryName doesn't exists. Creating the category"
+            $TagCategory = New-TagCategory -Name $TagCategoryName -Cardinality Single -EntityType @("VM","VMhost") -Description "Sites for Stretched Clusters. Do not change tag names or descriptions. This will cause the host tagging cmdlet to fail."
+        }
+
+        $ComputeCIS = Get-CisService "com.vmware.vcenter.compute.policies"
+
+        $Cluster = $Clusters[0]    
     
-    foreach ($Cluster in $Clusters) {
         $FaultDomains = $Cluster | Get-VsanFaultDomain
         $ClustView = $cluster.ExtensionData.MoRef
         $vSanStretchedView = Get-VsanView -Id "VimClusterVsanVcStretchedClusterSystem-vsan-stretched-cluster-system"
         $PrefFD = $vSanStretchedView.VSANVcGetPreferredFaultDomain($ClustView).PreferredFaultDomainName
 
-        Write-Host "`nCreating tags for cluster $Cluster with a preferred fault domain in $PrefFD"
+        Write-Host "`nCreating tag for preferred fault domain in $PrefFD"
         
-        $PrefTag = "$Cluster-Preferred" 
-        If (Get-Tag -Category $TagCategory | where {$_.Name -eq $PrefTag})
+        $PrefTagName = "$TagCategoryName-Preferred" 
+        If ($PrefTag = Get-Tag -Category $TagCategory | where {$_.Name -eq $PrefTagName})
         {
-            Write-Host -ForegroundColor Green "Tag $PrefTag in category $TagCategoryName already exists"
+            Write-Host -ForegroundColor Green "Tag $PrefTagName in category $TagCategoryName already exists"
         } Else {
-            Write-Host -ForegroundColor Yellow "Creating tag $PrefTag in category $TagCategoryName for AZ $($FaultDomains | Where {$_.Name -eq $PrefFD})"
-            New-Tag -Name $PrefTag -Category $TagCategory -Description "$($FaultDomains | Where {$_.Name -eq $PrefFD})" | Out-Null
+            Write-Host -ForegroundColor Yellow "Creating tag $PrefTagName in category $TagCategoryName for AZ $($FaultDomains | Where {$_.Name -eq $PrefFD})"
+            $PrefTag = New-Tag -Name $PrefTagName -Category $TagCategory -Description "$($FaultDomains | Where {$_.Name -eq $PrefFD})"
         }
         
         #Nonpreferred FD
-        $NoPrefTag = "$Cluster-Non-Preferred" 
-        If (Get-Tag -Category $TagCategory | where {$_.Name -eq $NoPrefTag})
+        $NoPrefTagName = "$TagCategoryName-Non-Preferred" 
+        If ($NoPrefTag = Get-Tag -Category $TagCategory | where {$_.Name -eq $NoPrefTagName})
         {
-            Write-Host -ForegroundColor Green "Tag $NoPrefTag in category $TagCategoryName already exists"
+            Write-Host -ForegroundColor Green "Tag $NoPrefTagName in category $TagCategoryName already exists"
         } Else {
-            Write-Host -ForegroundColor Yellow "Creating tag $NoPrefTag in category $TagCategoryName for AZ $($FaultDomains | Where {$_.Name -ne $PrefFD})"
-            New-Tag -Name $NoPrefTag -Category $TagCategory -Description "$($FaultDomains | Where {$_.Name -ne $PrefFD})" | Out-Null
+            Write-Host -ForegroundColor Yellow "Creating tag $NoPrefTagName in category $TagCategoryName for AZ $($FaultDomains | Where {$_.Name -ne $PrefFD})"
+            $NoPrefTag = New-Tag -Name $NoPrefTagName -Category $TagCategory -Description "$($FaultDomains | Where {$_.Name -ne $PrefFD})"
         }
-    }
-    Write-Host -ForegroundColor Green "`n`nThe following tags were created or validated:"
-    Get-Tag -Category $TagCategory | Format-Table
+
+        Write-Host -ForegroundColor Green "`n`nThe following tags were created or validated:"
+        Get-Tag -Category $TagCategory | Format-Table
+
+        #Creating Policies
+        If (-Not $SkipPolicyCreation) {
+            $NoPrefPolicyName = "$TagCategoryName-Non-Preferred"
+            $ComputeCis = Get-CisService "com.vmware.vcenter.compute.policies"
+
+            $PolicySpec = @{
+                capability = "com.vmware.vcenter.compute.policies.capabilities.vm_host_affinity"
+                name = ""
+                description = ""
+                host_tag = ""
+                vm_tag = ""
+            }
+
+            
+            #Preferred Site Policy
+            $PrefPolicyName = "$TagCategoryName-Preferred"
+            If ($PrefPolicy = $ComputeCis.list() | Where {$_.Name -eq $PrefPolicyName -and $_.capability -like "*vm_host_affinity"})
+            {
+                Write-Host -ForegroundColor Green "VM-Host affinity policy $PrefPolicyName already exists."
+
+            } Else {
+                Write-Host -ForegroundColor Yellow "Creating VM-Host affinity policy $PrefPolicyName"
+                $PolicySpec.name = $PrefPolicyName
+                $PolicySpec.description = "Do not change"
+                $PolicySpec.host_tag = $PrefTag.Id
+                $PolicySpec.vm_tag = $PrefTag.Id
+                
+                $ComputeCis.Create($PolicySpec)
+            }
+
+            #Non-Preferred Site Policy
+            $NoPrefPolicyName = "$TagCategoryName-Non-Preferred"
+            If ($PrefPolicy = $ComputeCis.list() | Where {$_.Name -eq $NoPrefPolicyName -and $_.capability -like "*vm_host_affinity"})
+            {
+                Write-Host -ForegroundColor Green "VM-Host affinity policy $NoPrefPolicyName already exists."
+
+            } Else {
+                Write-Host -ForegroundColor Yellow "`nCreating VM-Host affinity policy $NoPrefPolicyName"
+                $PolicySpec.name = $NoPrefPolicyName
+                $PolicySpec.description = "Do not change"
+                $PolicySpec.host_tag = $NoPrefTag.Id
+                $PolicySpec.vm_tag = $NoPrefTag.Id
+                
+                $ComputeCis.Create($PolicySpec)
+            }
+                                    
+        } Else { Write-Host "Skipping compute policy creation"}
+
+    } Else { Write-Error "No stretched clusters found in the connected vCenter" }
+
 }
 
 Function Set-MultiAzHostTag {
@@ -84,24 +143,39 @@ Function Set-MultiAzHostTag {
     .SYNOPSIS
         Assign MultiAZ tags to hosts in MultiAZ clusters
     .DESCRIPTION
-        Will tag each host in a stretched cluster with an appropriate tag from the category provided. By default the category is 'MultiAZSites'.
-        The tag name should correspond to the following format - 'Cluster-Name'-Preferred/'Cluster-Name'-Non-Preferred, e.g. Cluster-1-Preferred and Cluster-1-Non-Preferred. The description for each tag should be the corresponding AZ name.
+        Will tag each host in a stretched cluster with an appropriate tag from the category provided. By default the category is 'MultiAZ'.
+        The tag name should correspond to the following format - 'Category Name'-Preferred/'Category Name'-Non-Preferred, e.g. MultiAZ-Preferred and MultiAZ-Non-Preferred. The description for each tag should be the corresponding AZ name.
     .EXAMPLE
-        Tag-MultiAzHosts -TagCategoryName $Name
+        Set-MultiAzHostTag -TagCategoryName $Name
+    .EXAMPLE
+        Set-MultiAzHostTag -ClusterName $ClusterName
+    .EXAMPLE
+        Set-MultiAzHostTag -HostName $HostName
 #>
     Param (
-        [Parameter(Mandatory=$false)][String]$TagCategoryName="MultiAZSites"
+        [Parameter(Mandatory=$false)][String]$TagCategoryName="MultiAZ",
+        [Parameter(Mandatory=$false)][String]$ClusterName,
+        [Parameter(Mandatory=$false)][String]$HostName
 )
     
     $CreatedTags = @()
 
-    $Clusters = (Get-Cluster | Get-VsanFaultDomain).Cluster | Get-Unique
+    If ($HostName) {
+        Write-Host "Tagging host $HostName"
+        $VMHosts = Get-VMHost -Name $HostName
+        $Clusters = ($VMHosts | Get-Cluster | Get-VsanFaultDomain).Cluster | Get-Unique
+    } ElseIf ($ClusterName) {
+        $Clusters = (Get-Cluster -Name $ClusterName | Get-VsanFaultDomain).Cluster | Get-Unique
+        Write-Host "Tagging hosts in the stretched-cluster $ClusterName"
+    } Else {
+        $Clusters = (Get-Cluster | Get-VsanFaultDomain).Cluster | Get-Unique
 
-    Write-Host "Tagging hosts in the following stretched-clusters:"
-    $i = 1
-    foreach ($Cluster in $Clusters) {
-        Write-Host "`t$i. $Cluster"
-        $i++
+        Write-Host "Tagging hosts in the following stretched-clusters:"
+        $i = 1
+        foreach ($Cluster in $Clusters) {
+            Write-Host "`t$i. $Cluster"
+            $i++
+        }
     }
     
     Write-Host "`nValidating tag category $TagCategoryName exists..."
@@ -112,10 +186,11 @@ Function Set-MultiAzHostTag {
     } Else {
         Write-Host -ForegroundColor Green "Tag Category $TagCategory found"
     
+
         foreach ($Cluster in $Clusters) {
             $FaultDomains = $Cluster | Get-VsanFaultDomain
-            $PrefTagName = "$Cluster-Preferred"
-            $NoPrefTagName = "$Cluster-Non-Preferred"
+            $PrefTagName = "$TagCategoryName-Preferred"
+            $NoPrefTagName = "$TagCategoryName-Non-Preferred"
 
             $FDTags = Get-Tag -Category $TagCategory | Where {($_.Name -eq $PrefTagName) -or ($_.Name -eq $NoPrefTagName)}
 
@@ -124,8 +199,9 @@ Function Set-MultiAzHostTag {
                 Write-Error "Tags $PrefTagName or $NoPrefTagName in category $TagCategoryName could not be found. Please create the tags manually or using the New-MultiAzTags cmdlet"
             } Else {
                 Write-Host -ForegroundColor Green "Tags $PrefTagName and $NoPrefTagName in category $TagCategory found"
-
-                $VMHosts = Get-VMHost -Location $cluster
+                If (-Not $HostName) {
+                    $VMHosts = Get-VMHost -Location $cluster 
+                }
                 Foreach ($VMHost in $VMHosts) {
                     $FD = Get-VsanFaultDomain -VMHost $VMHost -Cluster $Cluster
                     $VMHostTag = $FDTags | where {$_.Description -eq "$($FD.Name)"}
@@ -141,7 +217,11 @@ Function Set-MultiAzHostTag {
             }
         }
 
-        Write-Host "`nThe following tags were assigned:"
-        $CreatedTags
+        If ($CreatedTags) {
+            Write-Host "`nNo tags were assigned"
+        } Else {
+            Write-Host "`nThe following tags were assigned:"
+            $CreatedTags
+        }
     }
 }
