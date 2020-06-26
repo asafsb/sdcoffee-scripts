@@ -19,45 +19,58 @@
     .DESCRIPTION
         This cmdlet connects to the HCX Enterprise Manager
     .EXAMPLE
+        Connect using username and password
+
         Connect-HcxServerAPI -Server $HCXServer -Username $Username -Password $Password
+    .EXAMPLE
+        Connect using credentials from Get-Credentials
+
+        Connect-HcxServerAPI -Server $HCXServer -Credential $Credentials
 #>
     Param (
         [Parameter(Mandatory=$true)][String]$Server,
-        [Parameter(Mandatory=$true)][String]$Username,
-        [Parameter(Mandatory=$true)][String]$Password
+        [Parameter(Mandatory=$false)][String]$Username,
+        [Parameter(Mandatory=$false)][String]$Password,
+        [Parameter(Mandatory=$false)][System.Management.Automation.PSCredential]$Credential
     )
 
-    $payload = @{
-        "username" = $Username
-        "password" = $Password
-    }
-    $body = $payload | ConvertTo-Json
-
-    $hcxLoginUrl = "https://$Server/hybridity/api/sessions"
-
-    if($PSVersionTable.PSEdition -eq "Core") {
-        $results = Invoke-WebRequest -Uri $hcxLoginUrl -Body $body -Method POST -UseBasicParsing -ContentType "application/json" -SkipCertificateCheck
-    } else {
-        $results = Invoke-WebRequest -Uri $hcxLoginUrl -Body $body -Method POST -UseBasicParsing -ContentType "application/json"
+    If($Credential) {
+        $Username = $Credential.UserName
+        $Password = $Credential.GetNetworkCredential().Password
     }
 
-    if($results.StatusCode -eq 200) {
-        $hcxAuthToken = $results.Headers.'x-hm-authorization'
+    If ($Username -and $Password) {
 
-        $headers = @{
-            "x-hm-authorization"="$hcxAuthToken"
-            "Content-Type"="application/json"
-            "Accept"="application/json"
+        $payload = @{
+            "username" = $Username
+            "password" = $Password
+        }
+        $body = $payload | ConvertTo-Json
+
+        $hcxLoginUrl = "https://$Server/hybridity/api/sessions"
+
+        if($PSVersionTable.PSEdition -eq "Core") {
+            $results = Invoke-WebRequest -Uri $hcxLoginUrl -Body $body -Method POST -UseBasicParsing -ContentType "application/json" -SkipCertificateCheck
+        } else {
+            $results = Invoke-WebRequest -Uri $hcxLoginUrl -Body $body -Method POST -UseBasicParsing -ContentType "application/json"
         }
 
-        $global:hcxConnection = new-object PSObject -Property @{
-            'Server' = "https://$server/hybridity/api";
-            'headers' = $headers
-        }
-        $global:hcxConnection
-    } else {
-        Write-Error "Failed to connect to HCX Manager, please verify your vSphere SSO credentials"
-    }
+        if($results.StatusCode -eq 200) {
+            $hcxAuthToken = $results.Headers.'x-hm-authorization'
+
+            $headers = @{
+                "x-hm-authorization"="$hcxAuthToken"
+                "Content-Type"="application/json"
+                "Accept"="application/json"
+            }
+
+            $global:hcxConnection = new-object PSObject -Property @{
+                'Server' = "https://$server/hybridity/api";
+                'headers' = $headers
+            }
+            $global:hcxConnection
+        } Else { Write-Error "Failed to connect to HCX Manager, please verify your vSphere SSO credentials" }
+    } Else { Write-Error "Please enter username and password or credentials" }
 }
 
 Function Get-HcxMigrationAPI {
