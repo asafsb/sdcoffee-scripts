@@ -218,10 +218,10 @@ Function Set-MultiAzHostTag {
         }
 
         If ($CreatedTags) {
-            Write-Host "`nNo tags were assigned"
-        } Else {
             Write-Host "`nThe following tags were assigned:"
             $CreatedTags
+        } Else {
+            Write-Host "`nNo tags were assigned"
         }
     }
 }
