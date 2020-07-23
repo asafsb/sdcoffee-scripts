@@ -290,21 +290,15 @@ Function Start-HcxMigrationAPI {
 			"entityId"=$VM.Id;
             "entityName"=$VM.Name;
 			"entityType"="VirtualMachine";
+            "summary"=@{
+                "guestFullName"=$VM.Summary.GuestFullName;
+                "guestId"=$VM.Summary.GuestId;
+                "memorySizeMB"=$VM.Summary.MemorySizeMB;
+                "numCpu"=$VM.Summary.Config.NumCpu;
+                "diskSize"=$VM.Summary.DiskSize;
+                "memorySize"=$(($VM.Summary.MemorySizeMB)*1048576);
+            }
 		}
-
-        If ($SrcVCConnection) {
-            $vmView = Get-View -Server $SrcVCConnection -ViewType VirtualMachine -Filter @{"name"=$VM.Name}
-			$summary = @{
-					"guestFullName"=$vmView.Summary.Config.GuestFullName;
-                    "guestId"=$vmView.Summary.Config.GuestId;
-					"memorySizeMB"=$vmView.Summary.Config.MemorySizeMB;
-                    "numCpu"=$vmView.Summary.Config.NumCpu;
-                    "diskSize"=$(($vmView.Config.Hardware.Device | Measure-Object CapacityInKB -Sum).Sum*1024);
-                    "memorySize"=$(($vmview.Summary.Config.MemorySizeMB)*1048576)
-				}
-            $entity.Add("summary",$summary)
-		} 
-
 
 		$transferProfileArray = @()
 		$transferOption = @{
