@@ -1,4 +1,4 @@
-﻿Import-Module <PSM1 folder>\HCX-GC-Migration-API_v1.psm1
+﻿Import-Module <PSM1 folder>\HCX-GC-Migration-API_v0.4.psm1
 
 $GCProperties = @{
     MacAddress = ""
@@ -18,7 +18,6 @@ $Password = "Str0ngPassw0rd" #User password
 
 Connect-HcxServerAPI -Server $Server -Username $Username -Password $Password #connect to the HCX server for an API session
 Connect-HCXServer -Server $Server -Username $Username -Password $Password #connect to the HCX server for a PowerCLI session, to retrieve parameters
-$ViSession = Connect-VIServer -Server vcenter1.corp.local  -Protocol https -User $Username -Password $Password #connect to the source vCenter. Not sending the VC conenction won't show progress precentage in the get command/UI
 
 
 write-host("Getting Source HCX Site")
@@ -118,4 +117,4 @@ $NetCustom.DNSSuffix = "corp.local" #If using GC, the DNS suffix for searches
 
 $netCustomArray+=$NetCustom
 
-$mig = Start-HcxMigrationAPI -VM $HcxVM -SourceHCX $HcxSrcSite -DestHCX $HcxDstSite -TargetComputeContainer $DstCompute -TargetFolder $DstFolder -NetworkMappings $NetworkMapping -TargetDatastore $DstDatastore -GuestCustomization $True -GCName $GCName -GCDomain $GCDomain -GCNetCustomization $netCustomArray -UpgradeVMTools $true -UpgradeHardware $True -ScheduleStartTime $StartTime -ScheduleEndTime $EndTime -SrcVCConnection $ViSession -ValidateOnly $false
+$mig = Start-HcxMigrationAPI -VM $HcxVM -SourceHCX $HcxSrcSite -DestHCX $HcxDstSite -TargetComputeContainer $DstCompute -TargetFolder $DstFolder -NetworkMappings $NetworkMapping -TargetDatastore $DstDatastore -GuestCustomization $True -GCName $GCName -GCDomain $GCDomain -GCNetCustomization $netCustomArray -UpgradeVMTools $true -UpgradeHardware $True -ScheduleStartTime $StartTime -ScheduleEndTime $EndTime -ValidateOnly $false
